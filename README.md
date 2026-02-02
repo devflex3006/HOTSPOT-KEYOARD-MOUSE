@@ -72,7 +72,6 @@ sudo python3 -m server.main
 ```
 
 **Expected Output:**
-![Server Preview](assets/server_preview.png)
 *You will see this banner with your IP and unique **Pairing Code**.*
 
 ### 3. Android Client Setup
