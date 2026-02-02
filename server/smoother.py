@@ -364,10 +364,10 @@ class ScrollSmoother:
         self, 
         inject_scroll: Callable[[int, int], None],
         target_fps: int = 60,
-        discharge_rate: float = 0.12,  # Slower discharge for scroll (feels weightier)
-        continuation_timeout_ms: int = 150,  # Longer continuation for scroll flicks
+        discharge_rate: float = 0.25,  # Optimization: 25% discharge (faster response)
+        continuation_timeout_ms: int = 100,  # Optimization: 100ms (tighter feel)
         smoothing_factor: float = 0.4,
-        momentum_decay: float = 0.95   # Very slow decay for long scrolls
+        momentum_decay: float = 0.90   # Optimization: Faster decay for control
     ):
         self._inject_scroll = inject_scroll
         
@@ -469,10 +469,16 @@ class ScrollSmoother:
                     # Adaptive rate based on charge amount
                     mag = math.sqrt(self._charge_v**2 + self._charge_h**2)
                     
-                    if mag > 5:
-                        rate = min(self._discharge_rate * 1.5, 0.3)
-                    else:
+                    # Optimization: More aggressive adaptive rate for snappiness
+                    if mag > 8:
+                        # Fast flick: discharge fast (up to 45%)
+                        rate = min(self._discharge_rate * 1.8, 0.45)
+                    elif mag < 2:
+                        # Slow scroll: standard smooth rate
                         rate = self._discharge_rate
+                    else:
+                        # Normal scroll: slight boost
+                        rate = self._discharge_rate * 1.2
                     
                     # Calculate discharge
                     discharge_v = self._charge_v * rate
@@ -484,28 +490,28 @@ class ScrollSmoother:
                     self._charge_v -= discharge_v
                     self._charge_h -= discharge_h
                     
-                    # Clear tiny residuals
-                    if abs(self._charge_v) < 0.05:
+                    # Clear tiny residuals - optimization: looser threshold for responsiveness
+                    if abs(self._charge_v) < 0.1:
                         out_v += self._charge_v
                         self._charge_v = 0
-                    if abs(self._charge_h) < 0.05:
+                    if abs(self._charge_h) < 0.1:
                         out_h += self._charge_h
                         self._charge_h = 0
                 
                 # === STATE 2: MOMENTUM (Flick) ===
-                elif self._is_active and time_since_input < 1.0: # 1 second momentum max
+                elif self._is_active and time_since_input < 0.8: # Optimization: 0.8s max momentum
                     # Apply drag to velocity
                     self._velocity_v *= self._momentum_decay
                     self._velocity_h *= self._momentum_decay
                     
                     # Output remaining velocity
-                    # Scale down slightly to make it controllable
-                    out_v = self._velocity_v * 0.8
-                    out_h = self._velocity_h * 0.8
+                    out_v = self._velocity_v
+                    out_h = self._velocity_h
                     
-                    # Stop if too slow
-                    if abs(self._velocity_v) < 0.1 and abs(self._velocity_h) < 0.1:
+                    # Stop if too slow - optimization: higher cutoff for punchier stop
+                    if abs(self._velocity_v) < 0.2 and abs(self._velocity_h) < 0.2:
                         self._is_active = False
+
                 
                 # === OUTPUT PROCESSING ===
                 # Accumulate sub-pixels (sub-notches)
