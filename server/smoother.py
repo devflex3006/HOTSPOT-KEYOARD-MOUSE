@@ -351,82 +351,181 @@ class InputSmoother:
 
 class ScrollSmoother:
     """
-    Scroll smoother with momentum.
+    Capacitor-style SCROLL smoother.
     
-    Provides smooth scrolling with momentum/inertia effect.
-    When the user stops scrolling, movement continues briefly
-    and gradually slows down.
+    Applies the same high-end "capacitor" smoothing logic to scrolling,
+    treating scroll events as charge that is discharged smoothly.
     
-    Parameters:
-        momentum_decay: How quickly scroll momentum fades (0.0-1.0)
-                       Higher = longer scroll coast, Lower = quicker stop
+    This turns jerky "tick-based" scrolling into fluid, pixel-perfect
+    scrolling with physics-based momentum.
     """
     
-    def __init__(self, inject_scroll: Callable[[int, int], None], momentum_decay: float = 0.85):
-        """
-        Initialize scroll smoother.
-        
-        Args:
-            inject_scroll: Callback to inject scroll events (vertical, horizontal)
-            momentum_decay: Momentum fade rate per frame (0.0-1.0)
-        """
+    def __init__(
+        self, 
+        inject_scroll: Callable[[int, int], None],
+        target_fps: int = 60,
+        discharge_rate: float = 0.12,  # Slower discharge for scroll (feels weightier)
+        continuation_timeout_ms: int = 150,  # Longer continuation for scroll flicks
+        smoothing_factor: float = 0.4,
+        momentum_decay: float = 0.95   # Very slow decay for long scrolls
+    ):
         self._inject_scroll = inject_scroll
+        
+        # === TIMING ===
+        self._target_fps = target_fps
+        self._discharge_rate = discharge_rate
+        self._continuation_timeout = continuation_timeout_ms / 1000.0
+        
+        # === THE CAPACITOR (Scroll Buffer) ===
+        self._charge_v = 0.0  # Vertical
+        self._charge_h = 0.0  # Horizontal
+        
+        # === SUB-PIXEL ACCUMULATOR ===
+        self._subpixel_v = 0.0
+        self._subpixel_h = 0.0
+        
+        # === VELOCITY & MOMENTUM ===
+        self._velocity_v = 0.0
+        self._velocity_h = 0.0
         self._momentum_decay = momentum_decay
         
-        # Momentum accumulators
-        self._momentum_v = 0.0  # Vertical scroll momentum
-        self._momentum_h = 0.0  # Horizontal scroll momentum
+        # === STATE ===
+        self._last_input_time = 0.0
+        self._is_active = False
         
-        # Thread control
+        # === THREAD CONTROL ===
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
     
     def start(self):
-        """Start the scroll momentum loop."""
+        """Start the scroll discharge loop."""
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread = threading.Thread(target=self._discharge_loop, daemon=True)
         self._thread.start()
     
     def stop(self):
-        """Stop the scroll momentum loop."""
+        """Stop the scroll discharge loop."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=0.5)
+            self._thread = None
     
     def add_scroll(self, vertical: int, horizontal: int = 0):
         """
-        Add scroll input with momentum.
+        CHARGE the scroll capacitor.
         
         Args:
             vertical: Vertical scroll amount (positive = up)
             horizontal: Horizontal scroll amount (positive = right)
         """
+        current_time = time.time()
+        
         with self._lock:
-            # Add to momentum with scaling factor
-            self._momentum_v += vertical * 0.5
-            self._momentum_h += horizontal * 0.5
-    
-    def _loop(self):
-        """Main scroll momentum loop."""
-        while self._running:
-            with self._lock:
-                # Process vertical scroll momentum
-                if abs(self._momentum_v) >= 0.5:
-                    v = 1 if self._momentum_v > 0 else -1
-                    self._inject_scroll(v, 0)
-                    self._momentum_v *= self._momentum_decay
-                    if abs(self._momentum_v) < 0.5:
-                        self._momentum_v = 0
-                
-                # Process horizontal scroll momentum
-                if abs(self._momentum_h) >= 0.5:
-                    h = 1 if self._momentum_h > 0 else -1
-                    self._inject_scroll(0, h)
-                    self._momentum_h *= self._momentum_decay
-                    if abs(self._momentum_h) < 0.5:
-                        self._momentum_h = 0
+            # === ADD TO CHARGE ===
+            self._charge_v += vertical
+            self._charge_h += horizontal
             
-            time.sleep(0.016)  # ~60 FPS
+            # === CALCULATE VELOCITY (for momentum/flick) ===
+            interval = 1.0 / self._target_fps
+            dt = current_time - self._last_input_time if self._last_input_time > 0 else interval
+            if dt < 0.001: dt = interval
+            
+            frames = max(dt * self._target_fps, 1)
+            
+            # Instant inputs for velocity
+            new_vv = vertical / frames
+            new_vh = horizontal / frames
+            
+            # Blend velocity
+            blend = 0.5
+            self._velocity_v = self._velocity_v * (1 - blend) + new_vv * blend
+            self._velocity_h = self._velocity_h * (1 - blend) + new_vh * blend
+            
+            # Update state
+            self._is_active = True
+            self._last_input_time = current_time
+    
+    def _discharge_loop(self):
+        """
+        DISCHARGE the scroll capacitor smoothly.
+        """
+        interval = 1.0 / self._target_fps
+        
+        while self._running:
+            loop_start = time.time()
+            
+            with self._lock:
+                current_time = time.time()
+                time_since_input = current_time - self._last_input_time
+                
+                out_v = 0.0
+                out_h = 0.0
+                
+                # === STATE 1: DISCHARGE (Buffer has charge) ===
+                if self._charge_v != 0 or self._charge_h != 0:
+                    # Adaptive rate based on charge amount
+                    mag = math.sqrt(self._charge_v**2 + self._charge_h**2)
+                    
+                    if mag > 5:
+                        rate = min(self._discharge_rate * 1.5, 0.3)
+                    else:
+                        rate = self._discharge_rate
+                    
+                    # Calculate discharge
+                    discharge_v = self._charge_v * rate
+                    discharge_h = self._charge_h * rate
+                    
+                    out_v = discharge_v
+                    out_h = discharge_h
+                    
+                    self._charge_v -= discharge_v
+                    self._charge_h -= discharge_h
+                    
+                    # Clear tiny residuals
+                    if abs(self._charge_v) < 0.05:
+                        out_v += self._charge_v
+                        self._charge_v = 0
+                    if abs(self._charge_h) < 0.05:
+                        out_h += self._charge_h
+                        self._charge_h = 0
+                
+                # === STATE 2: MOMENTUM (Flick) ===
+                elif self._is_active and time_since_input < 1.0: # 1 second momentum max
+                    # Apply drag to velocity
+                    self._velocity_v *= self._momentum_decay
+                    self._velocity_h *= self._momentum_decay
+                    
+                    # Output remaining velocity
+                    # Scale down slightly to make it controllable
+                    out_v = self._velocity_v * 0.8
+                    out_h = self._velocity_h * 0.8
+                    
+                    # Stop if too slow
+                    if abs(self._velocity_v) < 0.1 and abs(self._velocity_h) < 0.1:
+                        self._is_active = False
+                
+                # === OUTPUT PROCESSING ===
+                # Accumulate sub-pixels (sub-notches)
+                self._subpixel_v += out_v
+                self._subpixel_h += out_h
+                
+                # Extract integer scroll units
+                int_v = int(self._subpixel_v)
+                int_h = int(self._subpixel_h)
+                
+                # Keep fraction
+                self._subpixel_v -= int_v
+                self._subpixel_h -= int_h
+                
+                # Inject if we have enough for a step
+                if int_v != 0 or int_h != 0:
+                    self._inject_scroll(int_v, int_h)
+            
+            # Maintain FPS
+            elapsed = time.time() - loop_start
+            sleep_time = interval - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)

@@ -19,7 +19,7 @@ from .auth import AuthManager
 from .connection import ConnectionManager
 from .discovery import DiscoveryService
 from .network import UDPInputListener, TCPControlListener
-from .smoother import InputSmoother
+from .smoother import InputSmoother, ScrollSmoother
 from .config import DISCOVERY_PORT, INPUT_PORT, CONTROL_PORT
 
 # Configure logging
@@ -147,6 +147,7 @@ class HotspotKBMServer:
         self.udp_listener: Optional[UDPInputListener] = None
         self.tcp_listener: Optional[TCPControlListener] = None
         self.input_smoother: Optional[InputSmoother] = None
+        self.scroll_smoother: Optional[ScrollSmoother] = None
         self._running = False
         self._local_ip = ""
     
@@ -198,13 +199,18 @@ class HotspotKBMServer:
             except Exception as e:
                 logger.error(f"Move error: {e}")
     
-    def _on_scroll(self, vertical: int, horizontal: int):
-        """Handle scroll event."""
+    def _inject_scroll(self, vertical: int, horizontal: int):
+        """Actually inject scroll event (called by smoother)."""
         if self.mouse:
             try:
                 self.mouse.scroll(vertical, horizontal)
             except Exception as e:
                 logger.error(f"Scroll error: {e}")
+    
+    def _on_scroll(self, vertical: int, horizontal: int):
+        """Handle scroll event - routes through smoother."""
+        if self.scroll_smoother:
+            self.scroll_smoother.add_scroll(vertical, horizontal)
     
     def _on_disconnect(self):
         """Handle client disconnect - regenerates pairing code dynamically."""
@@ -249,6 +255,16 @@ class HotspotKBMServer:
             )
             self.input_smoother.start()
             logger.info("Capacitor smoother started (60 FPS, 16% discharge rate)")
+            
+            # Initialize scroll smoother with capacitor logic
+            self.scroll_smoother = ScrollSmoother(
+                inject_scroll=self._inject_scroll,
+                target_fps=60,
+                discharge_rate=0.12,
+                continuation_timeout_ms=150
+            )
+            self.scroll_smoother.start()
+            logger.info("Scroll smoother started (Capacitor logic)")
             
             # Generate pairing code
             pairing_code = self.auth_manager.generate_code()
@@ -311,6 +327,9 @@ class HotspotKBMServer:
         
         if self.input_smoother:
             self.input_smoother.stop()
+        
+        if self.scroll_smoother:
+            self.scroll_smoother.stop()
         
         if self.keyboard:
             self.keyboard.close()
