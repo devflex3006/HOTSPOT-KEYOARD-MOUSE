@@ -13,4 +13,4 @@ android_app/
 
 # Build artifacts (keep root APK, ignore others)
 *.apk
-!HotspotKBM-v1.2.apk
+!HotspotKBM-v1.3.apk
