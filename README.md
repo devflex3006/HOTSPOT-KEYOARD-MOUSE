@@ -41,23 +41,39 @@ Sensitivity is handled using dynamic multipliers:
 
 ## 🛠️ Installation & Usage
 
-### 1. Prerequisites
-- **Linux PC** (Root access required for `/dev/uinput`)
-- **Python 3.8+**
-- **Android Device** (Android 8.0+)
+### 1. Prerequisites & Setup
+**Required:** This server communicates directly with the Linux kernel via `uinput`.
+
+**Option A: Quick Start (Recommended)**
+Run the server with `sudo`:
+```bash
+sudo python3 -m server.main
+```
+
+**Option B: Manual Setup (If root is not preferred)**
+1. **Load Kernel Module:**
+   ```bash
+   sudo modprobe uinput
+   ```
+2. **Setup Permissions (udev rule):**
+   ```bash
+   echo 'KERNEL=="uinput", MODE="0660", GROUP="input"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
 
 ### 2. Linux Server Setup
 ```bash
-# Nagivate to project directory
+# Navigate to project directory
 cd /home/flex/Projects/HOTSPOT_KEYBOARD_MOUSE
 
-# Install dependencies (standard library only, but good to check)
-pip install -r requirements.txt
-
-# Run the server (Root required for virtual input creation)
+# No external pip packages needed! (Standard Library only)
+# Just run the server:
 sudo python3 -m server.main
 ```
-*You will see a styled banner with your IP and a unique **Pairing Code**.*
+
+**Expected Output:**
+![Server Preview](assets/server_preview.png)
+*You will see this banner with your IP and unique **Pairing Code**.*
 
 ### 3. Android Client Setup
 1. Connect your Android phone to the **same Hotspot/Wi-Fi** as your PC.
