@@ -260,8 +260,9 @@ class HotspotKBMServer:
             self.scroll_smoother = ScrollSmoother(
                 inject_scroll=self._inject_scroll,
                 target_fps=60,
-                discharge_rate=0.25,  # 25% discharge (snappy)
-                continuation_timeout_ms=100  # 100ms timeout
+                sensitivity=1.5,        # 1.8x sensitivity (balanced)
+                discharge_rate=0.18,    # Slower discharge for smoothness
+                continuation_timeout_ms=120  # Balanced timeout
             )
             self.scroll_smoother.start()
             logger.info("Scroll smoother started (Capacitor logic)")

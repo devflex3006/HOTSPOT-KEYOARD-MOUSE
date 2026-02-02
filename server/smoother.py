@@ -364,15 +364,17 @@ class ScrollSmoother:
         self, 
         inject_scroll: Callable[[int, int], None],
         target_fps: int = 60,
-        discharge_rate: float = 0.25,  # Optimization: 25% discharge (faster response)
-        continuation_timeout_ms: int = 100,  # Optimization: 100ms (tighter feel)
+        sensitivity: float = 2.5,      # New: Input multiplier for effortless scrolling
+        discharge_rate: float = 0.18,  # Optimization: Slower discharge = smoother feel
+        continuation_timeout_ms: int = 120,  # Optimization: Slight boost for glide
         smoothing_factor: float = 0.4,
-        momentum_decay: float = 0.90   # Optimization: Faster decay for control
+        momentum_decay: float = 0.92   # Optimization: Less friction for long flicks
     ):
         self._inject_scroll = inject_scroll
         
         # === TIMING ===
         self._target_fps = target_fps
+        self._sensitivity = sensitivity
         self._discharge_rate = discharge_rate
         self._continuation_timeout = continuation_timeout_ms / 1000.0
         
@@ -423,10 +425,15 @@ class ScrollSmoother:
         """
         current_time = time.time()
         
+        # Apply sensitivity multiplier
+        vertical *= self._sensitivity
+        horizontal *= self._sensitivity
+        
         with self._lock:
             # === ADD TO CHARGE ===
             self._charge_v += vertical
             self._charge_h += horizontal
+
             
             # === CALCULATE VELOCITY (for momentum/flick) ===
             interval = 1.0 / self._target_fps
