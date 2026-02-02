@@ -1,0 +1,16 @@
+# System
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+
+# Python
+venv/
+.pytest_cache/
+
+# Android Source (User requested exclusion)
+android_app/
+
+# Build artifacts (keep root APK, ignore others)
+*.apk
+!HotspotKBM-v1.0.apk

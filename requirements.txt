@@ -1,0 +1,6 @@
+# Runtime dependencies (all from stdlib for this project)
+# No external dependencies required
+
+# For testing
+pytest>=7.0.0
+pytest-mock>=3.10.0
