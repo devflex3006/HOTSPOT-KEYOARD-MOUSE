@@ -1,6 +1,12 @@
-# Runtime dependencies (all from stdlib for this project)
-# No external dependencies required
+# Runtime Dependencies
+# ====================
+# The Hotspot KBM Server is designed to be "Zero-Dependency".
+# It uses Python's standard library (fcntl, os, struct, socket) to communicate
+# directly with the Linux kernel (uinput) and network.
+#
+# No external packages like `python-uinput` or `evdev` are required to run the server.
 
-# For testing
+# Development & Testing
+# =====================
 pytest>=7.0.0
 pytest-mock>=3.10.0
