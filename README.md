@@ -1,5 +1,5 @@
 # HOTSPOT KEYBOARD & MOUSE
-**Production Release v1.0.0**
+**Production Release v1.3.0**
 
 A professional-grade remote input system that turns your Android device into a low-latency, high-precision trackpad and keyboard for Linux.
 
